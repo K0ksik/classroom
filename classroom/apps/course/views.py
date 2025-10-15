@@ -7,8 +7,8 @@ from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from .serializers import CoursePreviewSerializer, CourseProfileSerializer, CourseMemberSerializer
-from .models import Courses
+from .serializers import CoursePreviewSerializer, CourseProfileSerializer, CourseMemberSerializer, CourseCommentsSerializer
+from .models import Courses, Comments
 from django.core.cache import cache
 
 
@@ -113,4 +113,67 @@ class CourseViewSet(viewsets.ModelViewSet):
         course = self.get_object()
         course.students.remove(student_id)
         return Response(status=status.HTTP_200_OK)
+    
+   
+    @action(detail=True, methods=["get", "post"], url_path='posts/(?P<post_id>[^/.]+)/comments')
+    def post_comments(self, request, id = None, post_id = None):
+        if request.method == 'GET':
+            """Получение комментариев для поста"""
+            
+            comments = Comments.objects.filter(
+                subject_id=post_id,
+                subject_type='course_post'
+            ).select_related('author')
+            return Response(CourseCommentsSerializer(comments, many = True).data)
+    
+        elif request.method == 'POST':
+            """Создать комментарий под постом"""
+            serializer = CourseCommentsSerializer(data = request.data)
+            if serializer.is_valid():
+                serializer.save(
+                    author=request.user,
+                    subject_id=post_id,
+                    subject_type='course_post'
+                )
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['delete'],  url_path='posts/(?P<post_id>[^/.]+)/comments/remove_comment/(?P<comment_id>[^/.]+)')
+    def remove_comment(self, request, id = None, post_id = None, comment_id = None ):
+        """Удаление комментария под постом"""
+        comment = Comments.objects.get(
+                id = comment_id,
+                subject_id=post_id,
+                subject_type='course_post'
+            )
+        
+        if not comment.can_delete(request.user):
+            raise PermissionDenied()
+        
+        comment.delete()
+        return Response(status=status.HTTP_200_OK)
+    
+    
+    @action(detail=True, methods=['put'],  url_path='posts/(?P<post_id>[^/.]+)/comments/update_comment/(?P<comment_id>[^/.]+)')   
+    def update_comment(self, request, id=None, post_id = None, comment_id = None ):
+        """Редактировать комментарий"""
+        user = request.user
+        comment = Comments.objects.get(
+                id=comment_id,
+                subject_id=post_id,
+                subject_type='course_post'
+            )
+        if not comment.can_edit(request.user):
+            raise PermissionDenied()
+        
+        serializer = CourseCommentsSerializer(comment, data = request.data)
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        return Response(status=status.HTTP_400_BAD_REQUEST)
+    
+    
     
