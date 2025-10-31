@@ -11,7 +11,7 @@ from .serializers import LoginUserSerializer, UserProfileSerializer, \
     ChangePasswordSerializer, RequestPasswordResetSerializer, ResetPasswordSerializer, UserAvatarSerializer
 from .models import CustomUser
 from .services import send_password_reset_email, send_verification_email
-
+from loguru import logger
 
 class LoginView(generics.GenericAPIView):
     serializer_class = LoginUserSerializer
@@ -29,6 +29,7 @@ class LoginView(generics.GenericAPIView):
             }, status=status.HTTP_303_SEE_OTHER)
 
         login(request, user)
+        logger.info(f"Пользователь {request.user} вошел в систему")
 
         return Response({
             'user': UserProfileSerializer(user).data,
@@ -40,6 +41,7 @@ class LoginView(generics.GenericAPIView):
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def logout_view(request):
+    logger.info(f"Пользователь {request.user} вышел из системы")
     logout(request)
     return Response({
         "message": "Logout successful"
@@ -134,6 +136,7 @@ def change_password(request):
 
     update_session_auth_hash(request, user)
 
+    logger.info(f"Пользователь {request.user} сменил пароль")
     return Response({
         'message': 'Пароль успешно изменен'
     }, status=status.HTTP_200_OK)
@@ -150,6 +153,7 @@ def request_password_reset(request):
 
     send_password_reset_email(user)
 
+    logger.info(f"Запрос сброса пароля для пользователя {request.user}")
     return Response({
         'message': 'Код для сброса пароля отправлен на email'
     }, status=status.HTTP_200_OK)
@@ -187,6 +191,7 @@ def reset_password(request):
 
     reset_code.delete()
 
+    logger.info(f"Пароль пользователя {request.user} сброшен")
     return Response({
         'message': 'Пароль успешно изменен'
     }, status=status.HTTP_200_OK)

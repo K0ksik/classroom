@@ -4,4 +4,45 @@ services:
     container_name: redis_container
     ports:
       - "6379:6379"
+    networks:
+      - djangonetwork
+  db:
+    image: postgres
+    container_name: db_container
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - djangonetwork
+    
+  django:
+    build: .
+    container_name: django_container
+    command: sh -c "echo 'Django server - http://localhost:8000' && python manage.py runserver 0.0.0.0:8000"
+    environment:
+      - POSTGRES_NAME=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=db
+    volumes:
+      - .:/code
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - djangonetwork
+
+networks:
+  djangonetwork:
+    driver: bridge
+
+volumes:
+  pgdata:
 

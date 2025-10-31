@@ -95,14 +95,6 @@ class CourseCommentsSerializer(ModelSerializer):
         model = Comments
         fields = ('id', 'author', 'content', 'subject_id','subject_type', 'created_at', 'updated_at')
         read_only_fields = ('id', 'author', 'created_at', 'subject_id','subject_type')
-    
-    def create(self, validated_data):
-        author = self.context["request"].user
-        validated_data["author"] = author
-        return super().create(validated_data)
-    
-    def update(self, instance, validated_data):
-        return super().update(instance, validated_data)
 
 
 
