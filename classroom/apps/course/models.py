@@ -257,12 +257,14 @@ class Posts(models.Model):
         return self.post_type == PostTypes.EXERCISE
 
     def clean(self):
+        
         # MATERIAL
         if self.is_material:
             if any([self.max_score is not None, self.deadline is not None,
                     self.question_type is not None, self.can_change, self.can_comment]):
                 raise ValidationError({
-                    'task_type': 'Material posts cannot have max_score, deadline, '
+                    #Изменено task_type на post_type
+                    'post_type': 'Material posts cannot have max_score, deadline, '
                                  'question_type, can_change, or can_comment fields set.'
                 })
 
@@ -293,7 +295,8 @@ class Posts(models.Model):
             errors = {}
 
             if self.is_student_post:
-                errors['task_type'] = 'Students can only create student_post type posts.'
+                #Изменено task_type на post_type
+                errors['post_type'] = 'Students can only create student_post type posts.'
 
             if self.description is not None:
                 errors['description'] = 'Students cannot set description.'
@@ -323,6 +326,12 @@ class Posts(models.Model):
                 raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
+        #Добавлена генерация id поста для тестирования
+        if not self.id:
+            self.id = generate_random_string(
+                self._meta.get_field('id').max_length,
+                use_upper_case=False
+            )
         self.full_clean()
         old_question_type = self._current_question_type
 
