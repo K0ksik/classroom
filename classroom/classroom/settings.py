@@ -87,11 +87,16 @@ WSGI_APPLICATION = 'classroom.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+import os
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('POSTGRES_NAME', 'postgres'),
+        'USER': os.environ.get('POSTGRES_USER', 'postgres'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
+        'HOST': 'db',
+        'PORT': 5432,
     }
 }
 
@@ -162,6 +167,13 @@ REST_FRAMEWORK = {
         'apps.authorization.permissions.IsVerified',  # Требует верификации (подтверждения аккаунта)
         'rest_framework.permissions.IsAuthenticated',  # Требует аутентификации
     ],
+    #Ограничение запросов
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'user': '1000/day'
+    }
 }
 #EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend' # для тестов
 
@@ -183,7 +195,7 @@ EMAIL_ADMIN = EMAIL_HOST_USER
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/0",
+        "LOCATION": "redis://redis:6379/1",
     }
 }
 
@@ -191,12 +203,50 @@ import redis
 #Проерка подключения Redis
 try:
     MY_REDIS = redis.Redis(
-        host = 'localhost',
+        host = 'redis',
         port = 6379,
-        db = 0
+        db = 1,
     )
     MY_REDIS.ping()
     print('REDIS CONNECTION SUCCESSFUL!')
 
 except redis.exceptions.RedisError as e:
     print(f"REDIS CONNECTION FAILED: {e}")
+
+
+DEBUG_TOOLBAR_CONFIG = {
+    "SHOW_TOOLBAR_CALLBACK": lambda request: DEBUG,
+}
+
+#Настройка логирования
+from loguru import logger
+import sys
+import queue
+from threading import Thread
+
+logs_queue = queue.Queue()
+
+def loguru_config():
+    while True:
+        try:
+            log = logs_queue.get(timeout=1)
+            if log is None:
+                break
+            with open('loguru.log', 'a') as file:
+                file.write(log + "\n")
+        except queue.Empty:
+            continue
+
+def to_queue(message):
+    logs_queue.put(f"{message.record['time']:%Y-%m-%d %H:%M:%S} | {message.record['level'].name} | {message.record['message']}")
+
+logger.remove(0)
+logger.add(sys.stderr, level="INFO")
+logger.add(to_queue, level="INFO")
+
+log_thread = Thread(target=loguru_config, daemon=True)
+log_thread.start()
+
+
+
+#http://localhost:8000

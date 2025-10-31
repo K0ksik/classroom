@@ -10,6 +10,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .serializers import CoursePreviewSerializer, CourseProfileSerializer, CourseMemberSerializer, CourseCommentsSerializer
 from .models import Courses, Comments
 from django.core.cache import cache
+from loguru import logger
 
 
 
@@ -79,9 +80,15 @@ class CourseViewSet(viewsets.ModelViewSet):
         return Response(response)
 
     def perform_destroy(self, instance):
-        if not instance.can_user_delete(self.request.user):
-            raise PermissionDenied()
-        super().perform_destroy(instance)
+        try:
+            if not instance.can_user_delete(self.request.user):
+                raise PermissionDenied()
+            logger.info(f'{self.request.user} удаляет курс {instance.id}')
+            super().perform_destroy(instance)
+            logger.success(f'Курс удалён')
+            
+        except Exception as e:
+            logger.error(f"Ошибка удаления курса {instance.id}: {e} ")
     
 
     @action(detail=True, methods=["get"])
@@ -107,12 +114,18 @@ class CourseViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['delete'],  url_path='remove_member/(?P<student_id>[^/.]+)')
     def remove_member(self, request, id=None, student_id=None):
         """Удаление участника из курса"""
-        if not request.user.is_teacher and not request.user.is_admin:
-            raise PermissionDenied()
-        
-        course = self.get_object()
-        course.students.remove(student_id)
-        return Response(status=status.HTTP_200_OK)
+        try:
+            if not request.user.is_teacher and not request.user.is_admin:
+                raise PermissionDenied()
+            
+            course = self.get_object()
+            course.students.remove(student_id)
+
+            logger.success(f'{student_id} удалён из курса')
+            return Response(status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Ошибка удаления участника {student_id} из курса: {e} ")
+
     
    
     @action(detail=True, methods=["get", "post"], url_path='posts/(?P<post_id>[^/.]+)/comments')
@@ -128,52 +141,63 @@ class CourseViewSet(viewsets.ModelViewSet):
     
         elif request.method == 'POST':
             """Создать комментарий под постом"""
-            serializer = CourseCommentsSerializer(data = request.data)
-            if serializer.is_valid():
-                serializer.save(
-                    author=request.user,
-                    subject_id=post_id,
-                    subject_type='course_post'
-                )
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-            
-            return Response(status=status.HTTP_400_BAD_REQUEST)
-    
+            try:
+                serializer = CourseCommentsSerializer(data = request.data)
+                if serializer.is_valid():
+                    serializer.save(
+                        author=request.user,
+                        subject_id=post_id,
+                        subject_type='course_post'
+                    )
+                    return Response(serializer.data, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                logger.error(f"Ошибка создания комментария к посту {post_id}: {e} ")
+                return Response(status=status.HTTP_400_BAD_REQUEST)
+        
     @action(detail=True, methods=['delete'],  url_path='posts/(?P<post_id>[^/.]+)/comments/remove_comment/(?P<comment_id>[^/.]+)')
     def remove_comment(self, request, id = None, post_id = None, comment_id = None ):
         """Удаление комментария под постом"""
-        comment = Comments.objects.get(
-                id = comment_id,
-                subject_id=post_id,
-                subject_type='course_post'
-            )
+        try:
+            comment = Comments.objects.get(
+                    id = comment_id,
+                    subject_id=post_id,
+                    subject_type='course_post'
+                )
+            
+            if not comment.can_delete(request.user):
+                raise PermissionDenied()
+            
+            comment.delete()
+            logger.info(f"Комментарий {comment_id} к посту {post_id} удалён")
+            return Response(status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Ошибка удаления комментария {comment_id} к посту {post_id}: {e} ")
+
+
         
-        if not comment.can_delete(request.user):
-            raise PermissionDenied()
-        
-        comment.delete()
-        return Response(status=status.HTTP_200_OK)
-    
     
     @action(detail=True, methods=['put'],  url_path='posts/(?P<post_id>[^/.]+)/comments/update_comment/(?P<comment_id>[^/.]+)')   
     def update_comment(self, request, id=None, post_id = None, comment_id = None ):
         """Редактировать комментарий"""
-        user = request.user
-        comment = Comments.objects.get(
-                id=comment_id,
-                subject_id=post_id,
-                subject_type='course_post'
-            )
-        if not comment.can_edit(request.user):
-            raise PermissionDenied()
+        try:
+            user = request.user
+            comment = Comments.objects.get(
+                    id=comment_id,
+                    subject_id=post_id,
+                    subject_type='course_post'
+                )
+            if not comment.can_edit(request.user):
+                raise PermissionDenied()
+            
+            serializer = CourseCommentsSerializer(comment, data = request.data)
+            
+            if serializer.is_valid():
+                serializer.save()
+                logger.info(f"Комментарий {comment_id} к посту {post_id} отредактирован")
+                return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Ошибка редактирования комментария {comment_id} к посту {post_id}: {e} ")
+            return Response(status=status.HTTP_400_BAD_REQUEST)
         
-        serializer = CourseCommentsSerializer(comment, data = request.data)
-        
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        
-        return Response(status=status.HTTP_400_BAD_REQUEST)
-    
     
     
